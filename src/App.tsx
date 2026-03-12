@@ -33,7 +33,10 @@ type Step = 'upload' | 'background' | 'crop' | 'export' | 'complete';
 const BACKGROUND_COLORS = [
   { label: 'White', hex: '#FFFFFF', description: 'International standard' },
   { label: 'Light Gray', hex: '#E0E0E0', description: 'UK & common alternative' },
-  { label: 'Blue', hex: '#D2E4F0', description: 'Malaysian standard' },
+  { label: 'Blue (Malaysian)', hex: '#0059A5', description: 'Malaysian standard (Dark Blue)' },
+  { label: 'Light Blue', hex: '#8bbcdb', description: 'Alternative standard' },
+  { label: 'Red', hex: '#cc0000', description: 'Indonesian standard' },
+  { label: 'Dark Gray', hex: '#808080', description: 'Generic dark background' }
 ];
 
 function App() {
@@ -127,19 +130,29 @@ function App() {
   // ===================================================
 
   const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Camera access is not supported by your browser. Please ensure you are using a secure connection (HTTPS or localhost).');
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
       setShowCamera(true);
-    } catch {
-      alert('Unable to access camera. Please ensure camera permissions are enabled.');
+    } catch (err: any) {
+      console.error('Camera error:', err);
+      alert(`Unable to access camera: ${err.message || 'Permissions denied'}. Please ensure camera permissions are enabled.`);
     }
   }, []);
+
+  // Attach stream to video element when it mounts
+  useEffect(() => {
+    if (showCamera && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [showCamera]);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -175,9 +188,20 @@ function App() {
   // ===================================================
 
   const processBackground = useCallback(async () => {
-    if (!originalFile) return;
+    if (!originalFile || !originalImageUrl) return;
+
+    // First detect a face to ensure we are processing a human image
+    const img = await loadImage(originalImageUrl);
+    const faceResult = await faceDetection.detectFace(img);
+
+    if (!faceResult || !faceResult.faceBox) {
+      alert("No human face detected. Please import a clearer image where a human head and shoulders are visibly present before proceeding.");
+      faceDetection.reset();
+      return;
+    }
+
     await bgRemoval.processImage(originalFile);
-  }, [originalFile, bgRemoval]);
+  }, [originalFile, originalImageUrl, bgRemoval, faceDetection]);
 
   // When background removal completes, apply the selected color
   useEffect(() => {
@@ -601,9 +625,9 @@ function App() {
             <button
               className="btn btn-primary btn-lg"
               onClick={processBackground}
-              disabled={bgRemoval.isProcessing}
+              disabled={bgRemoval.isProcessing || faceDetection.isDetecting}
             >
-              {bgRemoval.isProcessing ? (
+              {(bgRemoval.isProcessing || faceDetection.isDetecting) ? (
                 <><span className="spinner" /> Processing...</>
               ) : (
                 '✨ Remove Background & Apply'

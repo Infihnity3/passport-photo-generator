@@ -31,7 +31,7 @@ export function useFaceDetection() {
 
         const loadModels = async () => {
             try {
-                const MODEL_URL = '/models';
+                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
                 await Promise.all([
                     faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -65,7 +65,7 @@ export function useFaceDetection() {
 
             try {
                 const detection = await faceapi
-                    .detectSingleFace(source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+                    .detectSingleFace(source, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }))
                     .withFaceLandmarks();
 
                 if (!mountedRef.current) return null;
@@ -94,7 +94,7 @@ export function useFaceDetection() {
                         landmarks: null,
                         isDetecting: false,
                         isModelLoaded: true,
-                        error: 'No face detected. Please ensure your face is clearly visible.',
+                        error: 'No human face detected. Please ensure you are in a well-lit area with your face clearly visible, or import a clearer photo.',
                     });
                     return null;
                 }
