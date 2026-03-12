@@ -1083,8 +1083,8 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div className="app-logo" onClick={resetApp}>
-          <div className="app-logo-icon">📸</div>
-          <span className="app-logo-text">PassportSnap</span>
+          <img src="/favicon.png" alt="Infihnity ID Logo" className="app-logo-icon" />
+          <span className="app-logo-text">Infihnity ID</span>
         </div>
         <div className="privacy-badge">
           🔒 100% Private
