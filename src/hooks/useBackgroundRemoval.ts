@@ -31,7 +31,6 @@ export function useBackgroundRemoval() {
 
         try {
             const blob = await removeBackground(imageSource, {
-                fetchArgs: { cache: 'no-store' },
                 progress: (key: string, current: number, total: number) => {
                     if (abortRef.current) return;
                     const pct = total > 0 ? Math.round((current / total) * 100) : 0;
