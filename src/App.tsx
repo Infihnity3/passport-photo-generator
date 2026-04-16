@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import Cropper, { type Area } from 'react-easy-crop';
 import { jsPDF } from 'jspdf';
+import QRCode from 'react-qr-code';
 import './App.css';
 import { useBackgroundRemoval } from './hooks/useBackgroundRemoval';
 import { useFaceDetection } from './hooks/useFaceDetection';
@@ -118,6 +119,9 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showCamera, setShowCamera] = useState(false);
+  const [showPhoneCameraFallback, setShowPhoneCameraFallback] = useState(false);
+  const [phoneCameraUrl, setPhoneCameraUrl] = useState('');
+  const [cameraFallbackReason, setCameraFallbackReason] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -184,29 +188,69 @@ function App() {
     setIsDragOver(false);
   }, []);
 
+  const buildPhoneCameraUrl = useCallback(() => {
+    if (typeof window === 'undefined') return '';
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('camera', 'phone');
+    return url.toString();
+  }, []);
+
+  const openPhoneCameraFallback = useCallback((reason: string) => {
+    setCameraFallbackReason(reason);
+    setPhoneCameraUrl(buildPhoneCameraUrl());
+    setShowPhoneCameraFallback(true);
+    setShowCamera(false);
+  }, [buildPhoneCameraUrl]);
+
   const startCamera = useCallback(async () => {
+    setShowPhoneCameraFallback(false);
+    setCameraFallbackReason('');
+
     if (!navigator.mediaDevices?.getUserMedia) {
-      alert('Camera access is not supported by your browser.');
+      openPhoneCameraFallback('This browser does not support direct camera access on this device.');
       return;
     }
 
     try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasVideoInput = devices.some((device) => device.kind === 'videoinput');
+
+      if (!hasVideoInput) {
+        openPhoneCameraFallback('No camera was detected on this computer.');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
       });
       streamRef.current = stream;
       setShowCamera(true);
+      setShowPhoneCameraFallback(false);
     } catch (err: unknown) {
+      const name = err instanceof DOMException ? err.name : '';
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') {
+        openPhoneCameraFallback('No camera was detected on this computer.');
+        return;
+      }
+
       const message = err instanceof Error ? err.message : 'Permissions denied';
       alert(`Unable to access camera: ${message}.`);
     }
-  }, []);
+  }, [openPhoneCameraFallback]);
 
   useEffect(() => {
     if (showCamera && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
     }
   }, [showCamera]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('camera') === 'phone') {
+      void startCamera();
+    }
+  }, [startCamera]);
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -218,6 +262,11 @@ function App() {
       streamRef.current = null;
     }
     setShowCamera(false);
+  }, []);
+
+  const closePhoneCameraFallback = useCallback(() => {
+    setShowPhoneCameraFallback(false);
+    setCameraFallbackReason('');
   }, []);
 
   const capturePhoto = useCallback(async () => {
@@ -519,58 +568,96 @@ function App() {
     >
       <div className="workflow-grid workflow-grid-upload">
         <SectionCard title="Add a photo" description="JPEG, PNG, or WebP up to 20 MB." className="upload-card">
-          {!showCamera ? (
-            <>
-              <div
-                className={`upload-zone ${isDragOver ? 'drag-over' : ''}`}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <div className="upload-icon">Upload</div>
-                <div className="upload-text">Drop your photo here</div>
-                <div className="upload-subtext">or click to browse</div>
-                <div className="upload-formats">Supports JPEG, PNG, WebP. Max 20 MB.</div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFile(file);
-                  }}
-                  className="sr-only"
-                />
-              </div>
+          {!showPhoneCameraFallback ? (
+            !showCamera ? (
+              <>
+                <div
+                  className={`upload-zone ${isDragOver ? 'drag-over' : ''}`}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="upload-icon">Upload</div>
+                  <div className="upload-text">Drop your photo here</div>
+                  <div className="upload-subtext">or click to browse</div>
+                  <div className="upload-formats">Supports JPEG, PNG, WebP. Max 20 MB.</div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFile(file);
+                    }}
+                    className="sr-only"
+                  />
+                </div>
 
-              <div className="upload-actions">
-                <div className="divider-chip">or</div>
-                <button className="btn btn-camera" onClick={startCamera}>
-                  Use camera
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="camera-container">
-              <div className="camera-preview-wrapper">
-                <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
-                <div className="camera-overlay">
-                  <div className="camera-instruction">Position your face within the frame</div>
-                  <div className="face-outline" />
-                  <div className="camera-tips">
-                    <span className="camera-tip">Keep lighting even</span>
-                    <span className="camera-tip">Remove glasses if possible</span>
+                <div className="upload-actions">
+                  <div className="divider-chip">or</div>
+                  <button className="btn btn-camera" onClick={startCamera}>
+                    Use camera
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="camera-container">
+                <div className="camera-preview-wrapper">
+                  <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
+                  <div className="camera-overlay">
+                    <div className="camera-instruction">Position your face within the frame</div>
+                    <div className="face-outline" />
+                    <div className="camera-tips">
+                      <span className="camera-tip">Keep lighting even</span>
+                      <span className="camera-tip">Remove glasses if possible</span>
+                    </div>
                   </div>
                 </div>
+                <div className="action-row action-row-center">
+                  <button className="btn btn-outline" onClick={stopCamera}>
+                    Cancel
+                  </button>
+                  <button className="capture-btn" onClick={capturePhoto}>
+                    Capture
+                  </button>
+                </div>
               </div>
-              <div className="action-row action-row-center">
-                <button className="btn btn-outline" onClick={stopCamera}>
-                  Cancel
-                </button>
-                <button className="capture-btn" onClick={capturePhoto}>
-                  Capture
-                </button>
+            )
+          ) : (
+            <div className="camera-handoff">
+              <div className="camera-handoff-copy">
+                <p className="step-eyebrow">Phone camera fallback</p>
+                <h2 className="section-card-title">Use your phone camera instead</h2>
+                <p className="section-card-description">
+                  {cameraFallbackReason} Scan the QR code to open this photo flow on your phone, then use the phone camera normally.
+                </p>
+                <div className="handoff-steps">
+                  <div className="handoff-step">
+                    <span className="handoff-step-number">1</span>
+                    Scan the QR code.
+                  </div>
+                  <div className="handoff-step">
+                    <span className="handoff-step-number">2</span>
+                    Open the link on your phone.
+                  </div>
+                  <div className="handoff-step">
+                    <span className="handoff-step-number">3</span>
+                    Tap Use camera and take the photo.
+                  </div>
+                </div>
+                <div className="handoff-url">{phoneCameraUrl}</div>
+                <div className="action-row">
+                  <button className="btn btn-outline" onClick={closePhoneCameraFallback}>
+                    Back
+                  </button>
+                  <button className="btn btn-primary" onClick={startCamera}>
+                    Check again
+                  </button>
+                </div>
+              </div>
+              <div className="camera-handoff-qr">
+                {phoneCameraUrl && <QRCode value={phoneCameraUrl} size={220} />}
               </div>
             </div>
           )}

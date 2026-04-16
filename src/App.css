@@ -389,6 +389,72 @@
   gap: 1rem;
 }
 
+.camera-handoff {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.1rem;
+  border-radius: 26px;
+  border: 1px solid rgba(47, 111, 237, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 246, 255, 0.94));
+}
+
+.camera-handoff-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.handoff-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.handoff-step {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.handoff-step-number {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(47, 111, 237, 0.08);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.handoff-url {
+  padding: 0.7rem 0.85rem;
+  border-radius: 16px;
+  background: rgba(18, 32, 51, 0.04);
+  border: 1px solid rgba(18, 32, 51, 0.06);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  word-break: break-all;
+}
+
+.camera-handoff-qr {
+  width: 15rem;
+  padding: 1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: #fff;
+  border: 1px solid rgba(18, 32, 51, 0.08);
+  box-shadow: var(--shadow-md);
+}
+
 .camera-preview-wrapper {
   position: relative;
   overflow: hidden;
@@ -1353,6 +1419,16 @@
   .preset-buttons {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .camera-handoff {
+    grid-template-columns: 1fr;
+  }
+
+  .camera-handoff-qr {
+    width: 100%;
+    max-width: 18rem;
+    justify-self: center;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1421,6 +1497,10 @@
 
   .camera-preview-wrapper {
     border-radius: 20px;
+  }
+
+  .camera-handoff {
+    padding: 0.95rem;
   }
 
   .cropper-container {
