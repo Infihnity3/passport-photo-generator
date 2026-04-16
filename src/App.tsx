@@ -31,6 +31,20 @@ import {
 
 type Step = 'upload' | 'background' | 'crop' | 'export' | 'complete';
 
+type BackgroundDialogState =
+  | {
+      mode: 'processing';
+      message: string;
+    }
+  | {
+      mode: 'success';
+      message: string;
+    }
+  | {
+      mode: 'error';
+      message: string;
+    };
+
 const BACKGROUND_COLORS = [
   { label: 'White', hex: '#FFFFFF', description: 'International standard' },
   { label: 'Light Gray', hex: '#E9ECEF', description: 'UK and common alternative' },
@@ -127,6 +141,7 @@ function App() {
 
   const [selectedBackground, setSelectedBackground] = useState(BACKGROUND_COLORS[2].hex);
   const [processedImageUrl, setProcessedImageUrl] = useState('');
+  const [backgroundDialog, setBackgroundDialog] = useState<BackgroundDialogState | null>(null);
 
   const [selectedStandard, setSelectedStandard] = useState<PassportStandard>(DEFAULT_STANDARD);
   const [showStandardDropdown, setShowStandardDropdown] = useState(false);
@@ -269,6 +284,10 @@ function App() {
     setCameraFallbackReason('');
   }, []);
 
+  const closeBackgroundDialog = useCallback(() => {
+    setBackgroundDialog(null);
+  }, []);
+
   const capturePhoto = useCallback(async () => {
     if (!videoRef.current) return;
 
@@ -295,16 +314,32 @@ function App() {
   const processBackground = useCallback(async () => {
     if (!originalFile || !originalImageUrl) return;
 
-    const img = await loadImage(originalImageUrl);
-    const faceResult = await faceDetection.detectFace(img);
+    try {
+      setBackgroundDialog({
+        mode: 'processing',
+        message: 'Checking your photo and removing the background. Please keep this tab open.',
+      });
 
-    if (!faceResult?.faceBox) {
-      alert('No human face detected. Please upload a clearer photo with a visible head and shoulders.');
-      faceDetection.reset();
-      return;
+      const img = await loadImage(originalImageUrl);
+      const faceResult = await faceDetection.detectFace(img);
+
+      if (!faceResult?.faceBox) {
+        faceDetection.reset();
+        setBackgroundDialog({
+          mode: 'error',
+          message: 'No human face detected. Please upload a clearer photo with a visible head and shoulders.',
+        });
+        return;
+      }
+
+      await bgRemoval.processImage(originalFile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Background removal failed.';
+      setBackgroundDialog({
+        mode: 'error',
+        message,
+      });
     }
-
-    await bgRemoval.processImage(originalFile);
   }, [originalFile, originalImageUrl, bgRemoval, faceDetection]);
 
   useEffect(() => {
@@ -321,6 +356,10 @@ function App() {
       const url = URL.createObjectURL(blob);
       trackBlobUrl(url);
       setProcessedImageUrl(url);
+      setBackgroundDialog({
+        mode: 'success',
+        message: 'Background removal completed successfully. Your preview is ready below.',
+      });
     };
 
     applyBg();
@@ -329,6 +368,15 @@ function App() {
       revoked = true;
     };
   }, [bgRemoval.result, selectedBackground]);
+
+  useEffect(() => {
+    if (!bgRemoval.error) return;
+
+    setBackgroundDialog({
+      mode: 'error',
+      message: bgRemoval.error,
+    });
+  }, [bgRemoval.error]);
 
   const goToCropStep = useCallback(() => {
     if (processedImageUrl) {
@@ -511,6 +559,7 @@ function App() {
     setOriginalFile(null);
     setOriginalImageUrl('');
     setProcessedImageUrl('');
+    setBackgroundDialog(null);
     setCroppedCanvas(null);
     setCroppedAreaPixels(null);
     setAutoCropApproved(null);
@@ -742,32 +791,19 @@ function App() {
         </SectionCard>
       </div>
 
-      {bgRemoval.isProcessing && (
-        <SectionCard title="Processing" description="This usually takes only a few seconds.">
-          <div className="progress-container">
-            <div className="progress-bar-track">
-              <div className="progress-bar-fill" style={{ width: `${bgRemoval.progress}%` }} />
-            </div>
-            <div className="progress-text">{bgRemoval.progressMessage}</div>
-          </div>
-        </SectionCard>
-      )}
-
-      {bgRemoval.error && (
-        <Callout tone="warning" className="status-callout">
-          {bgRemoval.error}
-        </Callout>
-      )}
-
       <div className="action-row action-row-center">
-        <button className="btn btn-outline" onClick={() => setCurrentStep('upload')}>
+        <button
+          className="btn btn-outline"
+          onClick={() => setCurrentStep('upload')}
+          disabled={bgRemoval.isProcessing || backgroundDialog?.mode === 'processing'}
+        >
           Back
         </button>
         {!processedImageUrl ? (
           <button
             className="btn btn-primary btn-lg"
             onClick={processBackground}
-            disabled={bgRemoval.isProcessing || faceDetection.isDetecting}
+            disabled={bgRemoval.isProcessing || faceDetection.isDetecting || backgroundDialog?.mode === 'processing'}
           >
             {bgRemoval.isProcessing || faceDetection.isDetecting ? (
               <>
@@ -1225,6 +1261,96 @@ function App() {
     );
   };
 
+  const renderBackgroundDialog = () => {
+    if (!backgroundDialog) return null;
+
+    if (backgroundDialog.mode === 'processing') {
+      return (
+        <div className="modal-overlay">
+          <div className="modal-content background-modal background-modal-processing" onClick={(e) => e.stopPropagation()}>
+            <div className="background-modal-badge">Processing</div>
+            <div className="background-modal-animation" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className="modal-title">Removing background</div>
+            <div className="modal-message">{backgroundDialog.message}</div>
+            <div className="background-modal-progress">
+              <div className="progress-header">
+                <span className="progress-label">{bgRemoval.progressMessage || 'Preparing...'}</span>
+                <span className="progress-value">{bgRemoval.progress}%</span>
+              </div>
+              <div className="progress-bar-track">
+                <div className="progress-bar-fill" style={{ width: `${bgRemoval.progress}%` }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (backgroundDialog.mode === 'success') {
+      return (
+        <div className="modal-overlay" onClick={closeBackgroundDialog}>
+          <div className="modal-content background-modal background-modal-success" onClick={(e) => e.stopPropagation()}>
+            <div className="background-modal-badge success">Success</div>
+            <div className="background-modal-icon success">✓</div>
+            <div className="modal-title">Background removed</div>
+            <div className="modal-message">{backgroundDialog.message}</div>
+            {processedImageUrl && (
+              <div className="background-modal-preview">
+                <img src={processedImageUrl} alt="Background removed preview" />
+              </div>
+            )}
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={closeBackgroundDialog}>
+                View results
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  closeBackgroundDialog();
+                  goToCropStep();
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="modal-overlay" onClick={closeBackgroundDialog}>
+        <div className="modal-content background-modal background-modal-error" onClick={(e) => e.stopPropagation()}>
+          <div className="background-modal-badge error">Error</div>
+          <div className="background-modal-icon error">!</div>
+          <div className="modal-title">Background removal failed</div>
+          <div className="modal-message">{backgroundDialog.message}</div>
+          <div className="background-modal-help">
+            Try a clearer photo with better lighting and a visible face, then run background removal again.
+          </div>
+          <div className="modal-actions">
+            <button className="btn btn-outline" onClick={closeBackgroundDialog}>
+              Close
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                closeBackgroundDialog();
+                void processBackground();
+              }}
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -1244,6 +1370,7 @@ function App() {
         {currentStep === 'complete' && renderCompleteStep()}
       </main>
 
+      {renderBackgroundDialog()}
       {renderWatermarkWarning()}
     </div>
   );
