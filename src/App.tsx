@@ -168,6 +168,21 @@ function App() {
   const bgRemoval = useBackgroundRemoval();
   const faceDetection = useFaceDetection();
   const { cleanup } = useMemoryCleanup();
+  const {
+    processImage: runBackgroundRemoval,
+    reset: resetBackgroundRemoval,
+    result: backgroundRemovalResult,
+    error: backgroundRemovalError,
+    isProcessing: isBackgroundProcessing,
+    progress: backgroundProgress,
+    progressMessage: backgroundProgressMessage,
+  } = bgRemoval;
+  const {
+    detectFace,
+    reset: resetFaceDetection,
+    isDetecting: isFaceDetecting,
+    error: faceDetectionError,
+  } = faceDetection;
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -321,10 +336,10 @@ function App() {
       });
 
       const img = await loadImage(originalImageUrl);
-      const faceResult = await faceDetection.detectFace(img);
+      const faceResult = await detectFace(img);
 
       if (!faceResult?.faceBox) {
-        faceDetection.reset();
+        resetFaceDetection();
         setBackgroundDialog({
           mode: 'error',
           message: 'No human face detected. Please upload a clearer photo with a visible head and shoulders.',
@@ -332,7 +347,7 @@ function App() {
         return;
       }
 
-      await bgRemoval.processImage(originalFile);
+      await runBackgroundRemoval(originalFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Background removal failed.';
       setBackgroundDialog({
@@ -340,15 +355,15 @@ function App() {
         message,
       });
     }
-  }, [originalFile, originalImageUrl, bgRemoval, faceDetection]);
+  }, [originalFile, originalImageUrl, runBackgroundRemoval, detectFace, resetFaceDetection]);
 
   useEffect(() => {
-    if (!bgRemoval.result || !selectedBackground) return;
+    if (!backgroundRemovalResult || !selectedBackground) return;
 
     let revoked = false;
 
     const applyBg = async () => {
-      const img = await loadImage(bgRemoval.result!);
+      const img = await loadImage(backgroundRemovalResult!);
       if (revoked) return;
 
       const canvas = applyBackground(img, selectedBackground, img.naturalWidth, img.naturalHeight);
@@ -367,16 +382,16 @@ function App() {
     return () => {
       revoked = true;
     };
-  }, [bgRemoval.result, selectedBackground]);
+  }, [backgroundRemovalResult, selectedBackground]);
 
   useEffect(() => {
-    if (!bgRemoval.error) return;
+    if (!backgroundRemovalError) return;
 
     setBackgroundDialog({
       mode: 'error',
-      message: bgRemoval.error,
+      message: backgroundRemovalError,
     });
-  }, [bgRemoval.error]);
+  }, [backgroundRemovalError]);
 
   const goToCropStep = useCallback(() => {
     if (processedImageUrl) {
@@ -390,21 +405,22 @@ function App() {
     if (!processedImageUrl) return;
 
     const img = await loadImage(processedImageUrl);
-    const result = await faceDetection.detectFace(img);
+    const result = await detectFace(img);
 
     if (result?.faceBox) {
       const aspect = selectedStandard.width / selectedStandard.height;
       const cropRegion = centerFaceInFrame(img, result.faceBox, aspect);
-      const { width: targetW, height: targetH } = getPixelDimensions(selectedStandard);
+      const targetW = Math.round((selectedStandard.width / 25.4) * selectedStandard.dpi);
+      const targetH = Math.round((selectedStandard.height / 25.4) * selectedStandard.dpi);
       const canvas = cropAndResize(img, cropRegion, targetW, targetH);
       setCroppedCanvas(canvas);
       setAutoCropApproved(null);
     }
-  }, [processedImageUrl, faceDetection, selectedStandard]);
+  }, [processedImageUrl, detectFace, selectedStandard.width, selectedStandard.height, selectedStandard.dpi]);
 
   useEffect(() => {
     if (currentStep === 'crop' && processedImageUrl) {
-      performAutoCrop();
+      void performAutoCrop();
     }
   }, [currentStep, processedImageUrl, performAutoCrop]);
 
@@ -573,9 +589,9 @@ function App() {
     setExportFormat('jpeg');
     setCleanupProgress(0);
     setCurrentStep('upload');
-    bgRemoval.reset();
-    faceDetection.reset();
-  }, [cleanup, bgRemoval, faceDetection]);
+    resetBackgroundRemoval();
+    resetFaceDetection();
+  }, [cleanup, resetBackgroundRemoval, resetFaceDetection]);
 
   const filteredStandards = PASSPORT_STANDARDS.filter((s) =>
     s.country.toLowerCase().includes(standardSearch.toLowerCase()) ||
@@ -779,7 +795,7 @@ function App() {
                     <img src={processedImageUrl} alt="Processed" className="preview-image" />
                   ) : (
                     <div className="empty-preview">
-                      {bgRemoval.isProcessing ? 'Processing...' : 'Run background removal to preview the result.'}
+                      {isBackgroundProcessing ? 'Processing...' : 'Run background removal to preview the result.'}
                     </div>
                   )}
                 </div>
@@ -795,7 +811,7 @@ function App() {
         <button
           className="btn btn-outline"
           onClick={() => setCurrentStep('upload')}
-          disabled={bgRemoval.isProcessing || backgroundDialog?.mode === 'processing'}
+          disabled={isBackgroundProcessing || backgroundDialog?.mode === 'processing'}
         >
           Back
         </button>
@@ -803,9 +819,9 @@ function App() {
           <button
             className="btn btn-primary btn-lg"
             onClick={processBackground}
-            disabled={bgRemoval.isProcessing || faceDetection.isDetecting || backgroundDialog?.mode === 'processing'}
+            disabled={isBackgroundProcessing || isFaceDetecting || backgroundDialog?.mode === 'processing'}
           >
-            {bgRemoval.isProcessing || faceDetection.isDetecting ? (
+            {isBackgroundProcessing || isFaceDetecting ? (
               <>
                 <span className="spinner" /> Processing...
               </>
@@ -901,7 +917,7 @@ function App() {
           >
             {!manualCrop ? (
               <div className="photo-preview-area">
-                {faceDetection.isDetecting && (
+                {isFaceDetecting && (
                   <Callout tone="info">
                     <span className="inline-status">
                       <span className="spinner" /> Detecting face...
@@ -909,7 +925,7 @@ function App() {
                   </Callout>
                 )}
 
-                {croppedCanvas && !faceDetection.isDetecting && (
+                {croppedCanvas && !isFaceDetecting && (
                   <>
                     <Callout tone="success" className="status-callout">
                       Face detected and centered for the {selectedStandard.country} standard.
@@ -949,9 +965,9 @@ function App() {
                   </>
                 )}
 
-                {faceDetection.error && !faceDetection.isDetecting && (
+                {faceDetectionError && !isFaceDetecting && (
                   <div className="error-stack">
-                    <Callout tone="warning">{faceDetection.error}</Callout>
+                    <Callout tone="warning">{faceDetectionError}</Callout>
                     <button className="btn btn-primary" onClick={rejectAutoCrop}>
                       Crop manually
                     </button>
@@ -1278,11 +1294,11 @@ function App() {
             <div className="modal-message">{backgroundDialog.message}</div>
             <div className="background-modal-progress">
               <div className="progress-header">
-                <span className="progress-label">{bgRemoval.progressMessage || 'Preparing...'}</span>
-                <span className="progress-value">{bgRemoval.progress}%</span>
+                <span className="progress-label">{backgroundProgressMessage || 'Preparing...'}</span>
+                <span className="progress-value">{backgroundProgress}%</span>
               </div>
               <div className="progress-bar-track">
-                <div className="progress-bar-fill" style={{ width: `${bgRemoval.progress}%` }} />
+                <div className="progress-bar-fill" style={{ width: `${backgroundProgress}%` }} />
               </div>
             </div>
           </div>
