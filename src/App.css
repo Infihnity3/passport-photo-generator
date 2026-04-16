@@ -965,6 +965,49 @@
   gap: 0.85rem;
 }
 
+.crop-fallback-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.05rem;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 231, 0.96));
+  border: 1px solid rgba(201, 138, 18, 0.18);
+  box-shadow: 0 18px 32px rgba(201, 138, 18, 0.08);
+}
+
+.crop-fallback-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-full);
+  background: rgba(201, 138, 18, 0.1);
+  color: var(--accent-yellow);
+  font-size: var(--font-size-xs);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.crop-fallback-title {
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.crop-fallback-message {
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.crop-fallback-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .export-layout {
   display: grid;
   grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.2fr);

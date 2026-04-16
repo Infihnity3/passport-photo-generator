@@ -148,6 +148,7 @@ function App() {
   const [standardSearch, setStandardSearch] = useState('');
   const [autoCropApproved, setAutoCropApproved] = useState<boolean | null>(null);
   const [manualCrop, setManualCrop] = useState(false);
+  const [showCropFallback, setShowCropFallback] = useState(false);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
@@ -397,6 +398,7 @@ function App() {
     if (processedImageUrl) {
       setAutoCropApproved(null);
       setManualCrop(false);
+      setShowCropFallback(false);
       setCurrentStep('crop');
     }
   }, [processedImageUrl]);
@@ -415,6 +417,7 @@ function App() {
       const canvas = cropAndResize(img, cropRegion, targetW, targetH);
       setCroppedCanvas(canvas);
       setAutoCropApproved(null);
+      setShowCropFallback(false);
     }
   }, [processedImageUrl, detectFace, selectedStandard.width, selectedStandard.height, selectedStandard.dpi]);
 
@@ -424,6 +427,23 @@ function App() {
     }
   }, [currentStep, processedImageUrl, performAutoCrop]);
 
+  useEffect(() => {
+    if (currentStep !== 'crop' || manualCrop || croppedCanvas || faceDetectionError) {
+      setShowCropFallback(false);
+      return;
+    }
+
+    if (showCropFallback) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowCropFallback(true);
+    }, 7000);
+
+    return () => window.clearTimeout(timeout);
+  }, [currentStep, manualCrop, croppedCanvas, processedImageUrl, faceDetectionError, showCropFallback]);
+
   const acceptAutoCrop = useCallback(() => {
     setAutoCropApproved(true);
     setCurrentStep('export');
@@ -432,6 +452,7 @@ function App() {
   const rejectAutoCrop = useCallback(() => {
     setAutoCropApproved(false);
     setManualCrop(true);
+    setShowCropFallback(false);
   }, []);
 
   const onCropComplete = useCallback((_: Area, croppedArea: Area) => {
@@ -447,6 +468,7 @@ function App() {
     setCroppedCanvas(canvas);
     setAutoCropApproved(true);
     setManualCrop(false);
+    setShowCropFallback(false);
     setCurrentStep('export');
   }, [croppedAreaPixels, processedImageUrl, selectedStandard]);
 
@@ -591,6 +613,7 @@ function App() {
     setCurrentStep('upload');
     resetBackgroundRemoval();
     resetFaceDetection();
+    setShowCropFallback(false);
   }, [cleanup, resetBackgroundRemoval, resetFaceDetection]);
 
   const filteredStandards = PASSPORT_STANDARDS.filter((s) =>
@@ -923,6 +946,27 @@ function App() {
                       <span className="spinner" /> Detecting face...
                     </span>
                   </Callout>
+                )}
+
+                {showCropFallback && !manualCrop && !croppedCanvas && !faceDetectionError && (
+                  <div className="crop-fallback-card">
+                    <div className="crop-fallback-badge">Manual crop available</div>
+                    <div className="crop-fallback-title">Auto crop is taking longer than expected</div>
+                    <div className="crop-fallback-message">
+                      If detection stalls, switch to manual crop now. You can still let the auto-crop finish if you prefer.
+                    </div>
+                    <div className="crop-fallback-actions">
+                      <button className="btn btn-outline" onClick={rejectAutoCrop}>
+                        Use manual crop
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => setShowCropFallback(false)}
+                      >
+                        Keep waiting
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {croppedCanvas && !isFaceDetecting && (
